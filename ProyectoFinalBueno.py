@@ -12,6 +12,7 @@ import time
 import random
 from collections import deque
 
+
 def read_coordinates(file_path):
     """
     Lee las coordenadas de las ciudades desde un archivo y las retorna como un diccionario.
@@ -27,11 +28,13 @@ def read_coordinates(file_path):
                 cities[city_id] = (x, y)
     return cities
 
+
 def calculate_distance(coord1, coord2):
     """
     Calcula la distancia euclidiana redondeada entre dos puntos.
     """
     return int(round(math.sqrt((coord1[0] - coord2[0]) ** 2 + (coord1[1] - coord2[1]) ** 2)))
+
 
 def create_distance_matrix(cities):
     """
@@ -47,6 +50,7 @@ def create_distance_matrix(cities):
             else:
                 distance_matrix[i][j] = 0  # Usar 0 para la diagonal principal
     return distance_matrix, city_ids
+
 
 def nearest_neighbor_heuristic(distance_matrix, city_ids):
     """
@@ -78,9 +82,60 @@ def nearest_neighbor_heuristic(distance_matrix, city_ids):
 
     return route, total_distance
 
+
+def nearest_insertion_heuristic(distance_matrix, city_ids):
+    """
+    Aplica la heurística de inserción más cercana para aproximar la solución del agente viajero.
+    """
+    n = len(city_ids)
+    visited = set()
+    
+    # Iniciar con un recorrido pequeño: dos primeras ciudades
+    route = [0, 1, 0]  # Usamos índices de la matriz de distancias
+    visited.update([0, 1])
+    
+    while len(visited) < n:
+        # Buscar la ciudad no visitada más cercana a cualquier ciudad en la ruta actual
+        nearest_city = None
+        min_distance = float('inf')
+        
+        for city in range(n):
+            if city not in visited:
+                for r_city in route[:-1]:  # Excluir la última ciudad (que es igual a la inicial)
+                    if distance_matrix[city][r_city] < min_distance:
+                        min_distance = distance_matrix[city][r_city]
+                        nearest_city = city
+
+        # Insertar la ciudad más cercana en el mejor lugar del recorrido
+        best_position = None
+        min_increase = float('inf')
+        for i in range(len(route) - 1):  # Iterar por pares consecutivos en la ruta
+            current_city, next_city = route[i], route[i + 1]
+            cost_increase = (
+                distance_matrix[current_city][nearest_city]
+                + distance_matrix[nearest_city][next_city]
+                - distance_matrix[current_city][next_city]
+            )
+            if cost_increase < min_increase:
+                min_increase = cost_increase
+                best_position = i + 1
+        
+        # Insertar la ciudad en la posición óptima
+        route.insert(best_position, nearest_city)
+        visited.add(nearest_city)
+    
+    # Convertir índices a IDs de ciudades
+    final_route = [city_ids[i] for i in route]
+    total_distance = sum(
+        distance_matrix[route[i]][route[i + 1]] for i in range(len(route) - 1)
+    )
+    return final_route, total_distance
+
+
 def two_opt_heuristic(distance_matrix, city_ids):
     """
-    Aplica la heurística 2-opt para mejorar una ruta inicial.
+    Aplica la heurística 2-opt para mejorar una ruta inicial, 
+    asegurando regresar a la ciudad inicial.
     """
     def calculate_total_distance(route):
         total_distance = 0
@@ -93,6 +148,7 @@ def two_opt_heuristic(distance_matrix, city_ids):
     n = len(city_ids)
     route = list(range(n))
     best_distance = calculate_total_distance(route)
+    #print(best_distance)
 
     improved = True
     while improved:
@@ -108,11 +164,13 @@ def two_opt_heuristic(distance_matrix, city_ids):
                     improved = True
 
     # Convertir índices a IDs de ciudades
+    route.append(city_ids[0])
     final_route = [city_ids[i] for i in route]
+    
     return final_route, best_distance
 
 
-def tabu_search(distance_matrix, city_ids, max_iterations=1000, tabu_tenure=50):
+def tabu_search(distance_matrix, city_ids, max_iterations=300, tabu_tenure=100):
     """
     Implementa la búsqueda tabú para resolver el problema del agente viajero.
     """
@@ -130,9 +188,9 @@ def tabu_search(distance_matrix, city_ids, max_iterations=1000, tabu_tenure=50):
         new_route = route[:]
         new_route[i:j + 1] = reversed(new_route[i:j + 1])
         return new_route
-
-    # Generar una solución inicial
+    
     current_solution = list(range(len(city_ids)))
+    
     current_distance = calculate_total_distance(current_solution)
     best_solution = current_solution[:]
     best_distance = current_distance
@@ -174,26 +232,12 @@ def tabu_search(distance_matrix, city_ids, max_iterations=1000, tabu_tenure=50):
         '''
 
     # Convertir índices a IDs de ciudades
+    best_solution.append(best_solution[0])  # Agregar la ciudad inicial al final de la ruta
     final_route = [city_ids[i] for i in best_solution]
+    
     return final_route, best_distance
 
-def nearest_neighbor_solution(distance_matrix):
-    """
-    Genera una solución inicial usando la heurística del vecino más cercano.
-    """
-    n = len(distance_matrix)
-    unvisited = list(range(n))
-    route = [unvisited.pop(0)]  # Comenzar desde la primera ciudad
-
-    while unvisited:
-        last_city = route[-1]
-        next_city = min(unvisited, key=lambda city: distance_matrix[last_city][city])
-        route.append(next_city)
-        unvisited.remove(next_city)
-
-    return route
-
-def simulated_annealing(distance_matrix, city_ids, initial_temperature=1000000, cooling_rate=0.9999, max_iterations=100000000):
+def simulated_annealing(distance_matrix, city_ids, initial_temperature=1000000, cooling_rate=0.9999, max_iterations=1000000):
     """
     Implementa recocido simulado para resolver el problema del agente viajero.
     """
@@ -214,7 +258,13 @@ def simulated_annealing(distance_matrix, city_ids, initial_temperature=1000000, 
         return new_route
 
     # Generar solución inicial
-    current_solution = list(range(len(city_ids)))
+    # current_solution = list(range(len(city_ids)))
+    # Obtener la solución inicial con nearest_neighbor_heuristic
+    routeN, _ = nearest_neighbor_heuristic(distance_matrix, city_ids)
+
+    # Mapear los IDs de las ciudades a índices
+    current_solution = [city_ids.index(city_id) for city_id in routeN[:-1]]  # Excluir la ciudad inicial que se repite al final
+    
     random.shuffle(current_solution)
     current_distance = calculate_total_distance(current_solution)
 
@@ -254,9 +304,13 @@ def simulated_annealing(distance_matrix, city_ids, initial_temperature=1000000, 
         if temperature < 1e-3:
             break
 
+    
     # Convertir índices a IDs de ciudades
+    best_solution.append(best_solution[0])
     final_route = [city_ids[i] for i in best_solution]
+    
     return final_route, best_distance
+
 
 def main():
     # Archivo con las coordenadas de las ciudades
@@ -275,6 +329,18 @@ def main():
     print("Ruta aproximada (Vecino mas cercano):", route)
     print("Distancia total aproximada (Vecino mas cercano):", total_distance)
     print("Tiempo de ejecución (Vecino mas cercano):", end - start)
+    print("__________________________________________________________________")
+    
+    # Aplicar la heurística del vecino más cercano
+    
+    start = time.time()
+    route, total_distance = nearest_insertion_heuristic(distance_matrix, city_ids)
+    end = time.time()
+    
+    print("Ruta aproximada (Nearest Insertion):", route)
+    print("Distancia total (Nearest Insertion):", total_distance)
+    print("Tiempo de ejecución (Nearest Insertion):", end - start)
+    print("__________________________________________________________________")
     
     # Aplicar el algoritmo 2opt
     
@@ -285,10 +351,10 @@ def main():
     print("Ruta mejorada (2-opt):", route)
     print("Distancia total mejorada (2-opt):", total_distance)
     print("Tiempo de ejecución (2-opt):", end - start)
+    print("__________________________________________________________________")
     
     # Aplicar busqueda tabu
-    
-    '''
+
     start = time.time()
     route, total_distance = tabu_search(distance_matrix, city_ids)
     end = time.time()
@@ -296,7 +362,7 @@ def main():
     print("Ruta aproximada (Busqueda Tabu):", route)
     print("Distancia total aproximada (Busqueda Tabu):", total_distance)
     print("Tiempo de ejecución (Busqueda Tabu):", end - start)
-    '''
+    print("__________________________________________________________________")
     
     # Aplicar recocido simulado
     
@@ -307,7 +373,6 @@ def main():
     print("Ruta aproximada (Recocido simulado):", route)
     print("Distancia total aproximada (Recocido simulado):", total_distance)
     print("Tiempo de ejecución (Recocido simulado):", end - start)
-    
 
 if __name__ == "__main__":
     main()
